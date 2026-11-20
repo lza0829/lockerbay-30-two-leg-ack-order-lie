@@ -1,0 +1,8 @@
+{
+  "events": [
+    {"id": "E9", "cabinet_id": "CAB-A", "cell_id": "CAB-A-01", "event_type": "confirm", "event_ts": "2026-11-19T02:30:00Z", "tracking_no": "TN1001", "payload": {}},
+    {"id": "E10", "cabinet_id": "CAB-A", "cell_id": "CAB-A-04", "event_type": "drop", "event_ts": "2026-11-19T03:00:00Z", "tracking_no": "TN1004", "payload": {}},
+    {"id": "E11", "cabinet_id": "CAB-A", "cell_id": "CAB-A-04", "event_type": "pickup", "event_ts": "2026-11-19T03:10:00Z", "tracking_no": "TN1004", "payload": {}},
+    {"id": "E12", "cabinet_id": "CAB-A", "cell_id": "CAB-A-04", "event_type": "confirm", "event_ts": "2026-11-19T03:12:00Z", "tracking_no": "TN1004", "payload": {}}
+  ]
+}
