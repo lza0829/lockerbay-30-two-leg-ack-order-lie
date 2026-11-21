@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Body, HTTPException
 
 from app.db import connect
+from app.modules import two_leg_ack_order as leg_ack
 from app.modules import two_leg_close_fence as fence
 from app.seed import overdue_hours, pair_timeout_minutes
 from app.services import bay as bay_svc
@@ -16,6 +17,7 @@ def overview():
         data = bay_svc.overview(conn)
         data["overdue_hours"] = overdue_hours(conn)
         data["two_leg"] = fence.overview(conn)
+        data["two_leg_ack"] = leg_ack.overview(conn)
         return data
     finally:
         conn.close()
@@ -196,14 +198,48 @@ def put_overdue(body: dict = Body(...)):
     finally:
         conn.close()
 
-# --- plant routes ---
-from app.modules import two_leg_ack_order as leg_ack
+# ---------------------------------------------------------------- 腿序 ack（事件时钟升序）
+
+
+@router.get("/two-leg-acks")
+def list_two_leg_acks(limit: int = 200):
+    conn = connect()
+    try:
+        return leg_ack.list_acks(conn, limit)
+    finally:
+        conn.close()
+
+
+@router.get("/two-leg-ack/audit")
+def audit_two_leg_ack():
+    conn = connect()
+    try:
+        violations = leg_ack.audit(conn)
+        return {"ok": not violations, "violations": violations}
+    finally:
+        conn.close()
+
+
+@router.get("/two-leg-ack/verify/{occupancy_id}")
+def verify_two_leg_ack(occupancy_id: str):
+    conn = connect()
+    try:
+        result = leg_ack.verify(conn, occupancy_id)
+        if result is None:
+            raise HTTPException(404, "占用不存在")
+        return result
+    finally:
+        conn.close()
+
 
 @router.get("/two-leg-ack/{occupancy_id}")
 def two_leg_ack(occupancy_id: str):
     conn = connect()
     try:
-        return leg_ack.ack_of(conn, occupancy_id)
+        result = leg_ack.ack_of(conn, occupancy_id)
+        if result is None:
+            raise HTTPException(404, "占用不存在")
+        return result
     finally:
         conn.close()
 

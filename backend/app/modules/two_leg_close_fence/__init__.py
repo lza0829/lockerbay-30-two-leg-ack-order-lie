@@ -15,6 +15,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from app.modules import two_leg_ack_order as leg_ack
+
 from .migrate import apply_schema
 
 __all__ = [
@@ -156,6 +158,10 @@ def _close_with_legs(conn, occ, ev, mate, now):
     )
     leg_id = cur.lastrowid
 
+    # 腿序 ack：同一事务内按事件时钟（occurred_at 升序）落 ack；
+    # 失败异常上抛，外层整笔回滚，不留半截 ack。
+    ack = leg_ack.record_ack(conn, occ["id"], leg_id, pickup, confirm, now)
+
     updated = conn.execute(
         """UPDATE occupancies SET closed_at=?, status='released', last_event_id=?
            WHERE id=? AND status='occupied'""",
@@ -183,6 +189,9 @@ def _close_with_legs(conn, occ, ev, mate, now):
         "pickup_id": pickup_id,
         "confirm_id": confirm_id,
         "close_leg_id": leg_id,
+        "leg_ack_id": ack["ack_id"],
+        "first_event_id": ack["first_event_id"],
+        "second_event_id": ack["second_event_id"],
     }
 
 
@@ -476,6 +485,16 @@ def verify(conn, occupancy_id):
                 },
             ]
         )
+    ack = leg_ack.ack_of(conn, occupancy_id)
+    checks.append(
+        {
+            "name": "腿序 ack 按事件时钟升序",
+            "ok": bool(ack and ack["legs_ok"]),
+            "detail": None
+            if (ack and ack["legs_ok"])
+            else "腿序 ack 缺失或 first/second 与事件时钟反序",
+        }
+    )
     checks.append(
         {
             "name": "占用已 released",
@@ -486,6 +505,7 @@ def verify(conn, occupancy_id):
     return {
         "occupancy": dict(occ),
         "leg": dict(leg) if leg else None,
+        "ack": ack,
         "pickup_event": dict(pickup) if pickup else None,
         "confirm_event": dict(confirm) if confirm else None,
         "candidates": candidates,

@@ -3,7 +3,9 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
 const proofs = ref([])
 const legs = ref([])
+const acks = ref([])
 const audit = ref(null)
+const ackAudit = ref(null)
 const occId = ref('')
 const verdict = ref(null)
 const err = ref('')
@@ -11,7 +13,9 @@ const err = ref('')
 async function load() {
   proofs.value = await api.proofs()
   legs.value = await api.closeLegs()
+  acks.value = await api.twoLegAcks()
   audit.value = await api.auditTwoLeg()
+  ackAudit.value = await api.auditTwoLegAck()
 }
 async function verify() {
   err.value = ''
@@ -88,6 +92,15 @@ onMounted(load)
           confirm <code>{{ verdict.leg.confirm_id }}</code> ·
           关闭于 <code>{{ verdict.leg.closed_at }}</code>
         </div>
+        <div v-if="verdict.ack" style="margin-top:.4rem" class="sub">
+          腿序 ack：first <code>{{ verdict.ack.first_event_id || '—' }}</code>
+          <span v-if="verdict.ack.first_ts">（{{ verdict.ack.first_ts }}）</span> ·
+          second <code>{{ verdict.ack.second_event_id || '—' }}</code>
+          <span v-if="verdict.ack.second_ts">（{{ verdict.ack.second_ts }}）</span>
+          <span :style="{ color: verdict.ack.legs_ok ? 'var(--free)' : 'var(--over)' }">
+            {{ verdict.ack.legs_ok ? '· 与事件时钟一致' : '· 腿序异常' }}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -106,6 +119,48 @@ onMounted(load)
             <td><code>{{ l.pickup_id }}</code> <span class="sub">{{ l.pickup_ts }}</span></td>
             <td><code>{{ l.confirm_id }}</code> <span class="sub">{{ l.confirm_ts }}</span></td>
             <td>{{ l.closed_at }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:1rem; overflow:auto">
+      <h2 style="margin:0 0 .5rem;font-size:1rem">腿序 ack（按事件时钟升序）</h2>
+      <p class="sub" style="margin:0 0 .5rem">
+        关账成功必须落腿序 ack：first 为 occurred_at 更早的腿事件；缺 ack、second 为空、
+        first/second 与事件时钟反序都算违规。
+      </p>
+      <p v-if="ackAudit && ackAudit.ok" class="sub" style="margin:0 0 .5rem; color:var(--free)">
+        腿序审计通过：全部 ack 与 parcel 事件时钟一致。
+      </p>
+      <template v-else-if="ackAudit">
+        <p class="sub" style="margin:0 0 .5rem; color:var(--over)">
+          腿序审计发现 {{ ackAudit.violations.length }} 条违规
+        </p>
+        <table style="margin-bottom:.75rem">
+          <thead><tr><th>类型</th><th>占用</th><th>证据</th></tr></thead>
+          <tbody>
+            <tr v-for="(v, i) in ackAudit.violations" :key="i">
+              <td><code>{{ v.kind }}</code></td>
+              <td><code>{{ v.occupancy_id || '—' }}</code></td>
+              <td><code>{{ JSON.stringify(v).slice(0, 110) }}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+      <p v-if="!acks.length" class="sub">暂无腿序 ack——双腿未关账不会产生 ack。</p>
+      <table v-else>
+        <thead>
+          <tr><th>占用</th><th>格口</th><th>运单</th><th>first（较早 occurred_at）</th><th>second</th><th>校验</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="a in acks" :key="a.id">
+            <td><code>{{ a.occupancy_id }}</code></td>
+            <td>{{ a.cell_id }}</td>
+            <td>{{ a.tracking_no }}</td>
+            <td><code>{{ a.first_event_id }}</code> <span class="sub">{{ a.first_ts }}</span></td>
+            <td><code>{{ a.second_event_id }}</code> <span class="sub">{{ a.second_ts }}</span></td>
+            <td :style="{ color: 'var(--free)' }">升序</td>
           </tr>
         </tbody>
       </table>

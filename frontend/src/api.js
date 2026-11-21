@@ -31,4 +31,7 @@ export const api = {
     }),
   ingest: () => req('/api/ingest/run', { method: 'POST', body: '{}' }),
   twoLegAck: (id) => req(`/api/two-leg-ack/${id}`),
+  twoLegAcks: () => req('/api/two-leg-acks'),
+  verifyTwoLegAck: (id) => req(`/api/two-leg-ack/verify/${encodeURIComponent(id)}`),
+  auditTwoLegAck: () => req('/api/two-leg-ack/audit'),
 }

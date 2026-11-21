@@ -146,7 +146,8 @@ def test_db_trigger_blocks_release_without_legs(db):
     row = occ(db)
     with pytest.raises(Exception) as err:
         db.execute("UPDATE occupancies SET status='released', closed_at='x' WHERE id=?", (row["id"],))
-    assert "two_leg_close_fence" in str(err.value)
+    # 双腿栅栏与腿序 ack 任一触发器先 abort 都算拦住（同属 two_leg 失败闭家族）
+    assert "two_leg" in str(err.value)
     assert occ(db)["status"] == "occupied"
     with pytest.raises(Exception):
         db.execute(

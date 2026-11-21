@@ -11,6 +11,8 @@
 import json
 from datetime import datetime, timezone
 
+from app.modules import two_leg_ack_order as leg_ack
+
 from . import schema
 
 
@@ -118,22 +120,33 @@ def reconcile_legacy(conn) -> int:
 
 
 def migrate(conn) -> dict:
-    """幂等迁移：返回重开条数与是否首次执行。"""
+    """幂等迁移：返回重开条数与是否首次执行。
+
+    腿序 ack 与双腿栅栏同生共死：建表、老边回填（按事件时钟补 ack）、触发器
+    安装都随本次迁移一起完成。
+    """
     done = conn.execute(
         "SELECT value FROM settings WHERE key='legacy_reconcile_done'"
     ).fetchone()
     schema.ensure_objects(conn)
+    leg_ack.ensure_objects(conn)
     if done:
+        # 老库可能已有 close_legs 边但还没有腿序 ack：按事件时钟补齐。
+        leg_ack.backfill(conn)
         # 触发器定义随时可随代码更新，重装是幂等的。
         schema.install_triggers(conn)
+        leg_ack.install_triggers(conn)
         return {"reconciled": 0, "first_run": False}
     schema.drop_triggers(conn)
+    leg_ack.drop_triggers(conn)
     reopened = reconcile_legacy(conn)
+    leg_ack.backfill(conn)
     conn.execute(
         "INSERT OR REPLACE INTO settings(key, value) VALUES ('legacy_reconcile_done', ?)",
         (_now(),),
     )
     schema.install_triggers(conn)
+    leg_ack.install_triggers(conn)
     return {"reconciled": reopened, "first_run": True}
 
 

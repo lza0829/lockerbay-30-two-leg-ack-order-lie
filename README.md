@@ -58,6 +58,32 @@ released”的占用，若仍是本格口最新占用且格口空闲，会改回
 放回候选区等 confirm；有后继占用等无法安全重开的情况保留原样并写
 `two_leg:legacy_released_unsafe` 搁置，交人工复核。
 
+## 腿序 ack（two-leg ack order）
+
+关账成功必须落下腿序 ack（`occupancy_id`、`first_event_id`、`second_event_id`）：
+**first 是 occurred_at 更早的那条腿事件**，占用账才能按事件时间重放；second 为空
+不得判 legs_ok。
+
+- 落库形态（择一）：**独立 `two_leg_ack_order` 表**，与 `close_legs` 边 1:1
+  （`occupancy_id` / `close_leg_id` 均 UNIQUE），不可改删；未采用“占用行追加
+  leg_ack_order 快照列”。
+- 提交形态（择一）：**关账同事务按 occurred_at 排序写 ack，缺一整笔回滚**；
+  未采用“先写 ack 草稿再对撞”的两段式。关账事务依次落关闭边 → 腿序 ack →
+  释放占用，任一步失败整笔回滚，不留“占用已关 ack 半截”。
+- 数据库兜底：占用转 released 必须先有 ack；ack 的双腿必须就是关闭边事件、
+  时刻必须等于 parcel 事件真实 occurred_at 且升序——人为对调 first/second 或
+  谎报时刻都会被触发器拒绝。
+- 老库迁移随双腿栅栏一起执行：已有 `close_legs` 边但缺 ack 的，按事件时钟回填。
+
+只读核证接口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/two-leg-acks` | 腿序 ack 列表（核账页腿序区） |
+| GET | `/api/two-leg-ack/{occupancy_id}` | 单占用腿序回执（legs_ok 由事件时钟重算） |
+| GET | `/api/two-leg-ack/verify/{occupancy_id}` | 单占用腿序逐项核证 |
+| GET | `/api/two-leg-ack/audit` | 全库腿序一致性审计 |
+
 跑测试（SQLite，本地夹具）：
 
 ```bash
